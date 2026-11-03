@@ -1,0 +1,27 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 临时文件
+tmp/
+
+# 本地工具配置
+.claude/
+
+# 运行日志
+gps_log.txt
+*.log
+# 官方桥接单测样本：虽为 .log 后缀，但属于测试夹具，必须随仓库分发
+!official_bridge/sample_heartbeat.log
+
+# 自动生成的大型轨迹文件
+gps_track.kml
+gps_track_auto.kml
+gps_track_vl863.kml
+# Visual Studio 本地构建缓存
+.vs/
+
+# 构建产物（源码提交不得包含）
+build/
+dist/
+*.spec

@@ -1,0 +1,1729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concox protocol to Google Maps</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --border: #e2e6ec;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --danger: #dc2626;
+    --radius: 12px;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff;
+    padding: 28px 24px;
+  }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header p { margin: 0; opacity: .9; font-size: 14px; }
+  .version-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border: 1px solid rgba(255,255,255,.45);
+    border-radius: 999px;
+    background: rgba(255,255,255,.14);
+    font-size: 12px;
+    font-weight: 600;
+    vertical-align: 2px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .card h2 { margin: 0 0 12px; font-size: 16px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .toolbar label { font-size: 13px; color: var(--muted); }
+  .toolbar input[type="text"] {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    font-size: 13px; width: 220px;
+  }
+  .toolbar input[type="number"] {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    font-size: 13px; width: 86px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 260px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12.5px;
+    resize: vertical;
+    color: var(--text);
+  }
+  textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+  .btn {
+    border: none; border-radius: 8px; padding: 10px 18px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background-color 160ms ease, transform 160ms var(--ease-out), opacity 160ms ease;
+  }
+  .btn:active:not(:disabled) { transform:scale(.97); }
+  .btn:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-ghost { background: #eef2f7; color: var(--text); }
+  .btn-success { background: var(--ok); color: #fff; }
+  @media (hover:hover) and (pointer:fine) {
+    .btn:hover:not(:disabled):not(:active) { transform:translateY(-1px); }
+    .btn-primary:hover:not(:disabled) { background:var(--primary-dark); }
+    .btn-ghost:hover:not(:disabled) { background:#e2e8f0; }
+    .btn-success:hover:not(:disabled) { background:#15803d; }
+    .choice:hover:not(:has(input:disabled)) { background:#f1f5f9; }
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  #inputCard { position:relative; z-index:1; }
+  /* 宽屏保持输入卡片宽度不变，只移动位置，避免表单在动画中反复换行。 */
+  @media (min-width:1440px) {
+    .wrap { max-width:1800px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      column-gap:24px; align-items:start; }
+    #inputCard { grid-column:1; grid-row:1 / span 2; min-width:0;
+      transform:translateX(calc(50% + 12px)); transition:transform 250ms var(--ease-in-out); }
+    .wrap.has-results #inputCard { transform:translateX(0); }
+    #result { grid-column:2; grid-row:1; min-width:0; }
+    #timelineCard { grid-column:2; grid-row:2; min-width:0; }
+  }
+  .wrap.is-instant-layout #inputCard { transition:none; }
+  #result, #timelineCard { display: none; }
+  #result.show, #timelineCard.show { display: block; }
+  .output-card { opacity:1; transform:translateY(0) scale(1); transform-origin:top center;
+    transition:transform 250ms var(--ease-out), opacity 200ms var(--ease-out); }
+  #timelineCard.output-card { transition-delay:40ms; }
+  .output-card.is-entering { opacity:0; transform:translateY(-24px) scale(.985); }
+  .output-card.is-leaving { opacity:0; transform:translateY(-24px) scale(.985);
+    pointer-events:none; transition-duration:160ms; transition-delay:0ms; }
+  .output-card.is-instant { transition:none !important; }
+  .choice { --choice-color:var(--primary); display:inline-flex; align-items:center; gap:8px;
+    padding:7px 10px; border:1px solid var(--border); border-radius:999px;
+    color:var(--muted); font-size:13px; line-height:1.4; cursor:pointer;
+    transition:background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms var(--ease-out); }
+  .choice:has(input:checked) { background:#eff6ff; border-color:var(--choice-color); color:var(--text); }
+  .choice:active:not(:has(input:disabled)) { transform:scale(.97); }
+  .choice:has(input:disabled) { opacity:.5; cursor:not-allowed; }
+  .choice input[type="checkbox"] { appearance:none; -webkit-appearance:none; flex:0 0 16px;
+    width:16px; height:16px; margin:0; display:grid; place-items:center; border:1.5px solid #94a3b8;
+    border-radius:5px; background:white; cursor:inherit;
+    transition:background-color 160ms ease, border-color 160ms ease; }
+  .choice input[type="checkbox"]:checked { background:var(--choice-color); border-color:var(--choice-color); }
+  .choice input[type="checkbox"]::before { content:""; width:10px; height:8px; background:white;
+    clip-path:polygon(0 42%,18% 25%,40% 52%,82% 0,100% 18%,42% 100%);
+    opacity:0; transform:scale(.85); transition:transform 160ms var(--ease-out), opacity 125ms var(--ease-out); }
+  .choice input[type="checkbox"]:checked::before { opacity:1; transform:scale(1); }
+  .choice input[type="checkbox"]:focus-visible { outline:2px solid var(--choice-color); outline-offset:3px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+  }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .legend { font-size: 13px; color: var(--muted); background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+  .legend b { color: var(--text); }
+  .legend .line { display: inline-block; margin-right: 16px; white-space: nowrap; }
+  .msg { font-size: 13px; margin-top: 10px; }
+  .msg.err { color: var(--danger); }
+  .msg.ok { color: var(--ok); }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .timeline-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  .timeline-range-row { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; margin:4px 0 10px; }
+  .timeline-range-row label { flex:0 0 auto; color:var(--muted); font-size:12.5px; }
+  .timeline-range-row input[type="range"] {
+    flex:1 1 auto; min-width:160px; height:28px; margin:0; cursor:ew-resize;
+    appearance:none; -webkit-appearance:none; background:transparent;
+    accent-color:var(--primary);
+  }
+  .timeline-range-row input[type="range"]::-webkit-slider-runnable-track {
+    height:6px; border-radius:999px;
+    background:linear-gradient(to right,var(--primary) var(--range-progress,0%),#dbe3ef var(--range-progress,0%));
+  }
+  .timeline-range-row input[type="range"]::-moz-range-track { height:6px; border-radius:999px; background:#dbe3ef; }
+  .timeline-range-row input[type="range"]::-moz-range-progress { height:6px; border-radius:999px; background:var(--primary); }
+  .timeline-range-row input[type="range"]::-webkit-slider-thumb {
+    appearance:none; -webkit-appearance:none; width:18px; height:18px; margin-top:-6px;
+    border:3px solid var(--primary); border-radius:50%; background:white;
+    box-shadow:0 1px 3px #1e3a8a26; transition:transform 160ms var(--ease-out);
+  }
+  .timeline-range-row input[type="range"]::-moz-range-thumb {
+    width:12px; height:12px; border:3px solid var(--primary); border-radius:50%; background:white;
+    box-shadow:0 1px 3px #1e3a8a26; transition:transform 160ms var(--ease-out);
+  }
+  .timeline-range-row input[type="range"]:active:not(:disabled)::-webkit-slider-thumb { transform:scale(1.2); }
+  .timeline-range-row input[type="range"]:active:not(:disabled)::-moz-range-thumb { transform:scale(1.2); }
+  .timeline-range-row input[type="range"]:focus-visible { outline:2px solid var(--primary); outline-offset:3px; border-radius:6px; }
+  .timeline-range-row input[type="range"]:disabled { opacity:.45; cursor:not-allowed; }
+  @media (hover:hover) and (pointer:fine) {
+    .timeline-range-row input[type="range"]:hover:not(:active):not(:disabled)::-webkit-slider-thumb { transform:scale(1.1); }
+    .timeline-range-row input[type="range"]:hover:not(:active):not(:disabled)::-moz-range-thumb { transform:scale(1.1); }
+  }
+  .timeline-range-label { flex:0 0 auto; min-width:230px; color:var(--text); font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .timeline-summary { color:var(--muted); font-size:12.5px; margin-bottom:8px; }
+  .timeline-chart { width:100%; min-height:260px; display:block; overflow:visible; }
+  #timelineCard { position:relative; }
+  .timeline-loader { position:absolute; inset:0; z-index:2; display:grid; place-items:center;
+    padding:24px; border-radius:var(--radius); background:rgba(248,250,252,.97);
+    opacity:0; visibility:hidden; pointer-events:none;
+    transition:opacity 160ms var(--ease-out), visibility 0s linear 160ms; }
+  .timeline-loader.is-visible { opacity:1; visibility:visible; pointer-events:auto;
+    transition:opacity 250ms var(--ease-out), visibility 0s; }
+  .loader-panel { width:min(100%,420px); text-align:center; opacity:0;
+    transform:translateY(8px) scale(.97); transform-origin:center;
+    transition:transform 160ms var(--ease-out), opacity 160ms var(--ease-out); }
+  .is-visible .loader-panel { opacity:1; transform:translateY(0) scale(1);
+    transition-duration:250ms; }
+  .loader-title { color:#1e3a8a; font-size:18px; font-weight:600; margin-bottom:10px; }
+  .loader-status { color:var(--muted); min-height:24px; margin-bottom:16px; font-size:13px; }
+  .loader-track { position:relative; height:7px; background:#dbeafe; border-radius:8px; overflow:hidden; }
+  .loader-fill { position:absolute; inset:0; background:linear-gradient(90deg,#2563eb,#38bdf8);
+    transform:scaleX(0); transform-origin:left; transition:transform .12s linear; }
+  .loader-glow { position:absolute; inset:0; width:35%; background:linear-gradient(90deg,transparent,#ffffffaa,transparent);
+    animation:loaderSweep 1.6s ease-in-out infinite; animation-play-state:paused; }
+  .is-visible .loader-glow { animation-play-state:running; }
+  .timeline-loader.is-resetting,.timeline-loader.is-resetting .loader-panel,
+  .timeline-loader.is-resetting .loader-fill { transition:none; }
+  .timeline-loader.is-resetting .loader-glow { animation:none; }
+  .loader-percent { margin-top:10px; color:#2563eb; font:13px Consolas,monospace; }
+  @keyframes loaderSweep { from { transform:translateX(-110%); } to { transform:translateX(390%); } }
+  @media (prefers-reduced-motion:reduce) {
+    .loader-panel,.is-visible .loader-panel { transform:none; transition:opacity 160ms var(--ease-out); }
+    .loader-fill { transition:none; }
+    .loader-glow { animation:none; }
+    .timeline-range-row input[type="range"]::-webkit-slider-thumb { transform:none !important; transition:none; }
+    .timeline-range-row input[type="range"]::-moz-range-thumb { transform:none !important; transition:none; }
+  }
+  .timeline-grid { stroke:#d7dde6; stroke-width:1; }
+  .timeline-axis { fill:#6b7280; font-size:11px; }
+  .timeline-packets { fill:#60a5fa; opacity:.48; }
+  .timeline-points { fill:#16a34a; opacity:.82; }
+  .timeline-heartbeats { fill:#a855f7; opacity:.9; }
+  .timeline-acc { fill:none; stroke:#f97316; stroke-width:2.5; }
+  .timeline-series { transition:opacity 160ms var(--ease-out); }
+  .timeline-series.is-hidden { opacity:0; pointer-events:none; }
+  .timeline-series.is-instant { transition:none; }
+  @media (prefers-reduced-motion: reduce) {
+    .timeline-series { transition-duration:100ms; }
+    .output-card,.output-card.is-entering,.output-card.is-leaving { transform:none; transition:opacity 160ms var(--ease-out); }
+    #timelineCard.output-card { transition-delay:0ms; }
+    .btn,.choice,.choice input[type="checkbox"]::before { transform:none !important; }
+    #inputCard { transition:none; }
+  }
+  /* 键盘操作直接响应；鼠标和触摸才播放按压与勾选动效。 */
+  html[data-input="keyboard"] .btn,
+  html[data-input="keyboard"] .choice,
+  html[data-input="keyboard"] .choice input[type="checkbox"],
+  html[data-input="keyboard"] .choice input[type="checkbox"]::before {
+    transition:none; transform:none;
+  }
+  @media (forced-colors:active) {
+    .choice input[type="checkbox"] { appearance:auto; -webkit-appearance:auto; }
+    .choice input[type="checkbox"]::before { display:none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Concox protocol to Google Maps <span class="version-badge" id="versionBadge"></span></h1>
+  <p>粘贴或上传「解析后的数据」（如 parsed.txt），一键生成标注好 ACC / 速度 / 漂移 / 补传的 KML 轨迹文件。</p>
+  <p style="opacity:.78;font-size:12.5px;margin-top:4px">Paste or upload parsed data (e.g. parsed.txt) to generate an annotated KML track for Google Maps / Google Earth.</p>
+</header>
+
+<div class="wrap">
+  <div class="card" id="inputCard">
+    <h2>1. 输入解析后的数据 · Paste parsed data</h2>
+    <div class="toolbar">
+      <label for="protocol" style="font-size:13px;color:var(--muted);">协议 · Protocol</label>
+      <select id="protocol" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+        <option value="concox" selected>Concox (GT06)</option>
+        <option value="jt808">JT/T808</option>
+      </select>
+      <label for="outputLanguage" style="font-size:13px;color:var(--muted);">KML output language</label>
+      <select id="outputLanguage" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+        <option value="en" selected>English</option>
+        <option value="zh">中文</option>
+      </select>
+      <label for="driftDistanceKm" style="font-size:13px;color:var(--muted);">Drift distance (km)</label>
+      <input type="number" id="driftDistanceKm" value="1.5" min="0.1" step="0.1" title="Distance between two adjacent points">
+      <label for="driftDurationMin" style="font-size:13px;color:var(--muted);">Drift duration (min)</label>
+      <input type="number" id="driftDurationMin" value="30" min="0.1" step="0.1" title="Time gap between two adjacent points">
+      <button class="btn btn-ghost" id="btnFile">选择文件 · Open file (.txt)</button>
+      <button class="btn btn-ghost" id="btnClear">清空 · Clear</button>
+      <input type="file" id="fileInput" accept=".txt,.log,.csv,.dat" style="display:none">
+    </div>
+    <textarea id="input" placeholder="在此粘贴 parsed.txt 的内容，例如：&#10;&#10;<===============总共 1905 条包,这是第 1 条包===============>&#10;原始数据:78 78 11 01 ...&#10;包类型: 登陆包(01)&#10;IMEI号: 860000000000001(0860000000000001)&#10;...&#10;&#10;时间=26/8/13 18:16:10(1A080D12100A)&#10;纬度=N 32.305837°(03774E6A),经度=E 75.035083°(080CE66E),速度: 0KM/H(00)&#10;定位模式:实时定位, 定位状态:已定位, 航向:17°(1411)&#10;ACC低(00),上报模式:开机上报位置信息(08)&#10;信息序列号: 0000(0000)&#10;校验信息: 5B90(5B90)"></textarea>
+    <div style="margin-top:12px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-primary" id="btnGenerate">生成 KML · Generate</button>
+      <label class="choice">
+        <input type="checkbox" id="detailed"> 详细点描述 · Detailed popup
+      </label>
+      <label class="choice" title="剔除无坐标值、被解析为 0N0E 的报警/补报点">
+        <input type="checkbox" id="filterZero" checked> 过滤无效坐标(0,0) · Filter 0,0
+      </label>
+      <span class="msg" id="msg"></span>
+    </div>
+    <div class="hint">提示 · Tip：每一「条包」以 <code>&lt;...这是第 N 条包...&gt;</code> 开头、以 <code>校验信息</code> 结尾，解析器提取时间 / 经纬度 / 速度 / 航向 / ACC / 卫星数等字段；时间按设备 UTC 转 GMT+8 显示。Each packet starts with <code>&lt;...第 N 条包...&gt;</code> and ends with <code>校验信息</code>.</div>
+    <div class="timeline-loader" id="timelineLoader" aria-hidden="true">
+      <div class="loader-panel">
+        <div class="loader-title">Building your timeline · 正在整理轨迹</div>
+        <div class="loader-status" id="loadingStatus" role="status" aria-live="polite">Preparing · 准备中</div>
+        <div class="loader-track" id="loadingProgress" role="progressbar" aria-label="Generation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="loader-fill" id="loadingFill"></div><div class="loader-glow"></div>
+        </div>
+        <div class="loader-percent" id="loadingPercent">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card output-card" id="result">
+    <h2>2. 解析结果 &amp; 下载 · Result &amp; download</h2>
+    <div id="deviceBar" style="display:none; background:#f8fafc; border:1px solid var(--border); border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:13px;">
+      <b>设备信息 · Device</b> — <span id="stDevice">-</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">定位点数 · Points</div><div class="v" id="stPoints">-</div></div>
+      <div class="stat"><div class="k">时间范围 · Time (GMT+8)</div><div class="v" id="stTime" style="font-size:14px">-</div></div>
+      <div class="stat"><div class="k">ACC ON / OFF</div><div class="v" id="stAcc">-</div></div>
+      <div class="stat"><div class="k">最大速度 · Max speed</div><div class="v" id="stSpeed">-</div></div>
+      <div class="stat"><div class="k">漂移段数 · Drift</div><div class="v" id="stDrift">-</div></div>
+    </div>
+    <div class="legend">
+      <div style="margin-bottom:6px"><b>图例 · Legend</b></div>
+      <span class="line"><span style="color:#dc2626">●</span> ACC 关闭 (红点) · ACC off (red)</span>
+      <span class="line"><span style="color:#eab308">●</span> ACC 开启 / 静止 (黄点) · ACC on / stopped (yellow)</span>
+      <span class="line"><span style="color:#16a34a">▲</span> ACC 开启 / 行驶 ≤50 (绿箭头) · moving ≤50 (green)</span>
+      <span class="line"><span style="color:#f97316">▲</span> ACC 开启 / 行驶 &gt;50 (橙箭头) · moving &gt;50 (orange)</span>
+      <span class="line"><span style="color:#a855f7">●</span> 补传 / ACC 关闭 (紫点) · re-upload off (purple)</span>
+      <span class="line"><span style="color:#a855f7">▲</span> 补传 / ACC 开启 (紫箭头) · re-upload on (purple)</span>
+      <span class="line"><span style="color:#dc2626">━</span> 轨迹 ACC 关 · track ACC off</span>
+      <span class="line"><span style="color:#16a34a">━</span> 轨迹 ACC 开 ≤50 · track ACC on ≤50</span>
+      <span class="line"><span style="color:#f97316">━</span> 轨迹 ACC 开 &gt;50 · track ACC on &gt;50</span>
+      <span class="line"><span style="color:#dc2626;font-weight:700">━</span> 漂移段 (&gt;1.5km &amp; &gt;30min) · drift</span>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-success" id="btnDownload" disabled>下载 KML · Download</button>
+      <button class="btn btn-ghost" id="btnCopy" disabled>复制 KML · Copy</button>
+      <span class="hint" id="fileName" style="margin-top:0;"></span>
+    </div>
+  </div>
+
+  <div class="card output-card" id="timelineCard">
+    <h2>3. Packet timeline · 数据包时间轴</h2>
+    <div class="timeline-controls">
+      <label class="choice"><input type="checkbox" id="showPacketSeries" checked> All packets (inferred time) · 全部包（推断时间）</label>
+      <label class="choice" style="--choice-color:#16a34a"><input type="checkbox" id="showPointSeries" checked> GPS points · 定位点</label>
+      <label class="choice" style="--choice-color:#a855f7"><input type="checkbox" id="showHeartbeatSeries" checked> Heartbeats · 心跳包</label>
+      <label class="choice" style="--choice-color:#f97316"><input type="checkbox" id="showAccSeries" checked> ACC state · ACC 状态</label>
+    </div>
+    <div class="timeline-range-row">
+      <label for="timelineRange">View start · 查看起点</label>
+      <input type="range" id="timelineRange" min="0" max="0" value="0" step="1" disabled>
+      <label for="timelineEndRange">View end · 查看终点</label>
+      <input type="range" id="timelineEndRange" min="1" max="1" value="1" step="1" disabled>
+      <span class="timeline-range-label" id="timelineRangeLabel">Start · 起始时间: -</span>
+    </div>
+    <div class="timeline-summary" id="timelineSummary" aria-live="polite"></div>
+      <svg class="timeline-chart" id="timelineChart" viewBox="0 0 900 300" role="img" aria-label="Packet count, GPS point count, heartbeat count and ACC state over time"></svg>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- 常量（与后端脚本保持一致） ----------
+  // 静态网页无法直接读取 Git 分支。创建新版本分支时只更新这一处，
+  // 页面徽标与浏览器标签标题会同时使用这个版本号。
+  var APP_VERSION = 'v0.2.7-dev';
+  var DEFAULT_DRIFT_DIST_M = 1500;   // 默认漂移距离阈值（米）
+  var DEFAULT_DRIFT_GAP_SEC = 1800;  // 默认漂移时间间隔阈值（秒）
+  var SPEED_THRESHOLD = 50;  // 速度分档阈值（km/h）
+  var TZ_OFFSET_HOURS = 8;   // UTC -> GMT+8
+
+  document.getElementById('versionBadge').textContent = APP_VERSION;
+  document.title = 'Concox protocol to Google Maps - ' + APP_VERSION;
+
+  // ---------- 工具函数 ----------
+  function toRad(x) { return x * Math.PI / 180; }
+
+  function haversine(lat1, lon1, lat2, lon2) {
+    var R = 6371000.0;
+    var p1 = toRad(lat1), p2 = toRad(lat2);
+    var dp = toRad(lat2 - lat1), dl = toRad(lon2 - lon1);
+    var a = Math.sin(dp / 2) * Math.sin(dp / 2) +
+            Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  function dirToText(deg, language) {
+    var compassEn = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    var compassZh = ['北','北东北','东北','东东北','东','东东南','东南','南东南','南','南西南','西南','西西南','西','西西北','西北','北西北'];
+    var compass = language === 'zh' ? compassZh : compassEn;
+    return compass[Math.floor(((deg + 11.25) % 360) / 22.5)];
+  }
+
+  // KML 中可见文字集中管理。以后增加语言或修改术语时，只需改这里，
+  // 不必在生成逻辑中逐行寻找字符串。
+  var KML_TEXT = {
+    en: {
+      reportTitle: 'GPS Track Analysis Report', points: 'GPS Points', statusReports: 'Status Reports',
+      timeRange: 'Time Range', maximumSpeed: 'Maximum Speed', legend: 'Legend',
+      accOffLegend: 'ACC OFF (red dot)', accStopLegend: 'ACC ON / stopped (yellow dot)',
+      alarmLegend: 'Active alarm (dark-blue large dot, highest priority)',
+      lowSpeedLegend: 'ACC ON / moving ≤50 km/h (green arrow)',
+      highSpeedLegend: 'ACC ON / moving >50 km/h (orange arrow)',
+      uploadOffLegend: 'Re-upload / ACC OFF (purple dot)', uploadOnLegend: 'Re-upload / ACC ON (purple arrow)',
+      trackOffLegend: 'Track / ACC OFF', trackLowLegend: 'Track / ACC ON, ≤50 km/h',
+      trackHighLegend: 'Track / ACC ON, >50 km/h',
+      trackFolder: 'Track Path', pointFolder: 'GPS Points', alarmFolder: 'Alarm Points',
+      segment: 'Segment', drift: 'Drift', point: 'GPS Point', localTime: 'Local Time', utcTime: 'UTC Time',
+      latitude: 'Latitude', longitude: 'Longitude', altitude: 'Altitude', speed: 'Speed', heading: 'Heading',
+      satellites: 'Satellites', gpsFix: 'GPS Fix', statusByte: 'Status Byte', reupload: 'Re-upload',
+      alarmType: 'Alarm Type', event: 'Event', yes: 'Yes', no: 'No', noCached: 'No / Cached',
+      alarmTag: 'ALARM', driftWarning: 'Warning: drift from previous point'
+    },
+    zh: {
+      reportTitle: 'GPS 轨迹分析报告', points: 'GPS 定位点', statusReports: '状态上报',
+      timeRange: '时间范围', maximumSpeed: '最大速度', legend: '图例',
+      accOffLegend: 'ACC 关闭（红点）', accStopLegend: 'ACC 开启 / 静止（黄点）',
+      alarmLegend: '有效报警（深蓝色大点，最高优先级）',
+      lowSpeedLegend: 'ACC 开启 / 行驶 ≤50 km/h（绿箭头）',
+      highSpeedLegend: 'ACC 开启 / 行驶 >50 km/h（橙箭头）',
+      uploadOffLegend: '补传 / ACC 关闭（紫点）', uploadOnLegend: '补传 / ACC 开启（紫箭头）',
+      trackOffLegend: '轨迹 / ACC 关闭', trackLowLegend: '轨迹 / ACC 开启，≤50 km/h',
+      trackHighLegend: '轨迹 / ACC 开启，>50 km/h',
+      trackFolder: '轨迹路径', pointFolder: 'GPS 定位点', alarmFolder: '报警点',
+      segment: '轨迹段', drift: '漂移', point: 'GPS 定位点', localTime: '本地时间', utcTime: 'UTC 时间',
+      latitude: '纬度', longitude: '经度', altitude: '海拔', speed: '速度', heading: '方向',
+      satellites: '卫星数', gpsFix: 'GPS 定位', statusByte: '状态字节', reupload: '数据补传',
+      alarmType: '报警类型', event: '事件', yes: '是', no: '否', noCached: '否 / 缓存',
+      alarmTag: '报警', driftWarning: '警告：与上一点之间疑似漂移'
+    }
+  };
+
+  var ALARM_NAME_EN = {
+    '震动报警': 'Vibration Alarm', 'SOS报警': 'SOS Alarm', '断电报警': 'Power Disconnect Alarm',
+    '低电报警': 'Low Battery Alarm', '超速报警': 'Overspeed Alarm', '位移报警': 'Movement Alarm',
+    '进围栏报警': 'Geofence Entry Alarm', '出围栏报警': 'Geofence Exit Alarm',
+    '非法点火报警': 'Unauthorized Ignition Alarm', '碰撞报警': 'Collision Alarm',
+    '拆除报警': 'Tamper Alarm', '光感报警': 'Light Sensor Alarm',
+    '存储单元故障报警': 'Storage Unit Fault Alarm (TF card missing or unavailable)'
+  };
+
+  function alarmForLanguage(rawAlarm, alarmCode, language) {
+    var raw = String(rawAlarm || '').trim();
+    if (!raw) return '';
+    if (language === 'zh') return raw;
+    if (ALARM_NAME_EN[raw]) return ALARM_NAME_EN[raw];
+    // 未知中文报警不直接写入英文 KML，优先使用协议代码作为可追踪标识。
+    if (/[\u4e00-\u9fff]/.test(raw)) return alarmCode ? 'Alarm (' + alarmCode + ')' : 'Unknown Alarm';
+    return raw;
+  }
+
+  function eventsForLanguage(events, language) {
+    if (!events || !events.length) return '';
+    if (language === 'zh') return events.join('、');
+    return events.map(function (rawEvent) {
+      var eventText = String(rawEvent || '').trim();
+      var prefix = 'Event: ';
+      if (eventText.indexOf('报警:') === 0) {
+        prefix = 'Alarm: ';
+        eventText = eventText.slice(3);
+      } else if (eventText.indexOf('视频:') === 0) {
+        prefix = 'Video Alarm: ';
+        eventText = eventText.slice(3);
+      }
+      return prefix + alarmForLanguage(eventText, '', 'en');
+    }).join(', ');
+  }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  // 输出 GMT+8 本地时间字符串（不依赖浏览器时区）
+  function fmtGMT8(dUtc) {
+    var t = new Date(dUtc.getTime() + TZ_OFFSET_HOURS * 3600 * 1000);
+    return t.getUTCFullYear() + '-' + pad(t.getUTCMonth() + 1) + '-' + pad(t.getUTCDate()) +
+           ' ' + pad(t.getUTCHours()) + ':' + pad(t.getUTCMinutes()) + ':' + pad(t.getUTCSeconds());
+  }
+
+  // 输出 UTC ISO 时间（用于 KML TimeStamp）
+  function fmtISO(dUtc) {
+    return dUtc.getUTCFullYear() + '-' + pad(dUtc.getUTCMonth() + 1) + '-' + pad(dUtc.getUTCDate()) +
+           'T' + pad(dUtc.getUTCHours()) + ':' + pad(dUtc.getUTCMinutes()) + ':' + pad(dUtc.getUTCSeconds()) + 'Z';
+  }
+
+  function escapeXml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // 将已知包型归为时间轴需要的少量类别。
+  // ASCII 指令格式尚未确认，因此这里故意不猜测、不单独分类。
+  function classifyPacket(packetName, packetCode) {
+    var name = String(packetName || '');
+    var code = String(packetCode || '').toUpperCase();
+    if (code === '0002' || code === '13' || /心跳|heartbeat/i.test(name)) return 'heartbeat';
+    if (code === '0200' || /位置|定位|location/i.test(name)) return 'location';
+    return 'other';
+  }
+
+  // 部分包（心跳、平台应答等）没有设备时间。优先用相同流水号定位包的
+  // 时间；没有匹配流水号时，再按接收顺序绑定到最近的带时间包。
+  // timeline_time 仅供统计图使用，time_inferred 明确标记它不是包内原始时间。
+  function assignPacketTimelineTimes(records) {
+    var timedPositions = [];
+    var timeBySerial = {};
+    records.forEach(function (record, index) {
+      record.timeline_time = record.time_utc || null;
+      record.time_inferred = false;
+      if (!record.time_utc) return;
+      timedPositions.push(index);
+      if (record.serial) timeBySerial[String(record.serial).toUpperCase()] = record.time_utc;
+    });
+    if (!timedPositions.length) return;
+
+    var nextAnchor = 0;
+    records.forEach(function (record, index) {
+      if (record.timeline_time) return;
+
+      var serialTime = record.serial && timeBySerial[String(record.serial).toUpperCase()];
+      if (serialTime) {
+        record.timeline_time = serialTime;
+        record.time_inferred = true;
+        return;
+      }
+
+      while (nextAnchor < timedPositions.length && timedPositions[nextAnchor] < index) nextAnchor++;
+      var previousPosition = nextAnchor > 0 ? timedPositions[nextAnchor - 1] : null;
+      var nextPosition = nextAnchor < timedPositions.length ? timedPositions[nextAnchor] : null;
+      var chosenPosition;
+      if (previousPosition === null) chosenPosition = nextPosition;
+      else if (nextPosition === null) chosenPosition = previousPosition;
+      else chosenPosition = (nextPosition - index <= index - previousPosition) ? nextPosition : previousPosition;
+
+      if (chosenPosition !== null) {
+        record.timeline_time = records[chosenPosition].time_utc;
+        record.time_inferred = true;
+      }
+    });
+  }
+
+  // ---------- 解析解析后的文本（Concox / JT808） ----------
+  function parseParsedTxt(text, protocol, filterZero) {
+    return finishSteps(parseParsedTxtSteps(text, protocol, filterZero));
+  }
+
+  // 同一份生成器既可同步运行，也可在网页上分段运行，避免维护两套解析规则。
+  function finishSteps(iterator) {
+    var step;
+    do { step = iterator.next(); } while (!step.done);
+    return step.value;
+  }
+
+  function* parseParsedTxtSteps(text, protocol, filterZero) {
+    var isJt = (protocol === 'jt808');
+    var lines = text.split(/\r?\n/);
+    var points = [];
+    var packetRecords = [];
+    var totalPacketCount = 0;
+    var imei = null;
+    var model = null;
+    var cur = null;
+    var packetMeta = null;
+    var events = [];
+    var filteredCount = 0;
+
+    function commitPacket() {
+      if (!packetMeta) return;
+      packetRecords.push({
+        order: packetMeta.order,
+        packet_index: packetMeta.packet_index,
+        packet_name: packetMeta.packet_name || 'Unknown',
+        packet_code: packetMeta.packet_code || '',
+        category: packetMeta.category || 'other',
+        serial: packetMeta.serial || '',
+        time_utc: packetMeta.time_utc || null,
+        acc: packetMeta.acc === undefined ? null : packetMeta.acc
+      });
+      packetMeta = null;
+    }
+
+    function commitPoint() {
+      if (cur && ('time_utc' in cur) && ('latitude' in cur) && ('longitude' in cur)) {
+        // 无效坐标过滤：部分报警/补报包无坐标值，解析为 0N0E，需可选择性剔除
+        var isZero = (Math.abs(cur.latitude) < 1e-9 && Math.abs(cur.longitude) < 1e-9);
+        if (filterZero && isZero) {
+          filteredCount++;
+        } else {
+          cur.time_local = new Date(cur.time_utc.getTime() + TZ_OFFSET_HOURS * 3600 * 1000);
+          if (cur.speed === undefined) cur.speed = 0;
+          if (cur.direction === undefined) cur.direction = 0;
+          if (cur.altitude === undefined) cur.altitude = 0;
+          if (cur.acc === undefined) cur.acc = 0;
+          if (cur.sat_count === undefined) cur.sat_count = 0;
+          if (cur.gps_positioned === undefined) cur.gps_positioned = 0;
+          if (cur.gps_status === undefined) cur.gps_status = 0;
+          if (cur.reupload === undefined) cur.reupload = 0;
+          if (events.length) cur.events = events.slice();
+          points.push(cur);
+        }
+      }
+      cur = null;
+      events = [];
+    }
+
+    for (var idx = 0; idx < lines.length; idx++) {
+      if (idx % 128 === 0) yield idx / Math.max(1, lines.length);
+      // 兼容从 Markdown/网页复制的 **加粗** 与 &#x20; 空格实体。
+      var line = lines[idx].replace(/^\uFEFF/, '').replace(/\*\*/g, '').replace(/&#x20;/gi, ' ').trim();
+      if (!line) continue;
+
+      var m = line.match(/<.*第\s*(\d+)\s*条包/);
+      if (m) {
+        // 正常包会在校验行提交；这里也收尾一次，以兼容空包或截断包。
+        commitPoint();
+        commitPacket();
+        totalPacketCount++;
+        cur = { idx: parseInt(m[1], 10) };
+        packetMeta = {
+          order: totalPacketCount,
+          packet_index: cur.idx
+        };
+        events = [];
+        continue;
+      }
+      if (cur === null) continue;
+
+      // JT808 批量包：封包第N个 → 收尾上一个数据体，开新数据体
+      if (isJt && /^封包第/.test(line)) {
+        commitPoint();
+        cur = {};
+        continue;
+      }
+
+      // 包名称和协议号，例如“终端心跳(0002)”或“心跳数据包(13)”。
+      m = line.match(/包类型\s*[：:]\s*(.+?)\s*\(([0-9A-Fa-f]+)\)/);
+      if (m && packetMeta) {
+        packetMeta.packet_name = m[1].trim();
+        packetMeta.packet_code = m[2].toUpperCase();
+        packetMeta.category = classifyPacket(packetMeta.packet_name, packetMeta.packet_code);
+      }
+
+      // IMEI / 终端手机号（全局，取第一次命中）
+      if (!imei) {
+        var mi = line.match(/IMEI号:\s*(\d+)/) || line.match(/终端手机号:\s*([0-9A-Fa-f]+)/);
+        if (mi) imei = mi[1];
+      }
+      // 机型提取（全局，取第一次命中）
+      if (!model) {
+        var mm = line.match(/机种:\s*([^\s(]+)/);
+        if (mm) model = mm[1];
+      }
+
+      // 时间
+      m = line.match(/时间\s*[=：:]\s*(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(\d+)/);
+      if (m) {
+        var y = parseInt(m[1], 10), mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+        var h = parseInt(m[4], 10), mi2 = parseInt(m[5], 10), s = parseInt(m[6], 10);
+        if (y < 100) y += 2000;
+        cur.time_utc = new Date(Date.UTC(y, mo - 1, d, h, mi2, s));
+        if (packetMeta && !packetMeta.time_utc) packetMeta.time_utc = cur.time_utc;
+      }
+
+      m = line.match(/纬度\s*[=：:]\s*([NS])\s*([0-9.]+)°/);
+      if (m) cur.latitude = parseFloat(m[2]) * (m[1] === 'S' ? -1 : 1);
+
+      m = line.match(/经度\s*[=：:]\s*([EW])\s*(-?[0-9.]+)°/);
+      if (m) {
+        var v = parseFloat(m[2]);
+        cur.longitude = m[1] === 'W' ? -Math.abs(v) : Math.abs(v);
+      }
+
+      // 速度（JT808 可带小数，如 18.9KM/H）
+      m = line.match(/速度:\s*(\d+(?:\.\d+)?)KM\/H/);
+      if (m) cur.speed = parseFloat(m[1]);
+
+      // 方向：Concox 航向 / JT808 方向角
+      if (isJt) {
+        m = line.match(/方向角:(\d+)°/);
+        if (m) cur.direction = parseInt(m[1], 10);
+      } else {
+        m = line.match(/航向:(\d+)°/);
+        if (m) cur.direction = parseInt(m[1], 10);
+      }
+
+      // 海拔：JT808 海拔高度
+      if (isJt) {
+        m = line.match(/海拔高度:(-?\d+)m/);
+        if (m) cur.altitude = parseInt(m[1], 10);
+      }
+
+      m = line.match(/定位状态:([^,，\s]+)/);
+      if (m) cur.gps_positioned = (m[1].indexOf('未定位') >= 0) ? 0 :
+                                  ((m[1].indexOf('已定位') >= 0) ? 1 : 0);
+
+      // 卫星数
+      m = line.match(/参与定位的卫星数为(\d+)颗/);
+      if (m) cur.sat_count = parseInt(m[1], 10);
+      if (isJt) {
+        m = line.match(/卫星数:\s*(\d+)/);
+        if (m) cur.sat_count = parseInt(m[1], 10);
+      }
+
+      // ACC：Concox 高/低 或 JT808 开/关
+      if (isJt) {
+        m = line.match(/ACC(开|关)\((\d+)\)/);
+        if (m) {
+          cur.acc = (m[1] === '开') ? 1 : 0;
+          if (packetMeta && packetMeta.acc === undefined) packetMeta.acc = cur.acc;
+        }
+      } else {
+        m = line.match(/ACC(高|低)\((\d+)\)/);
+        if (m) {
+          cur.acc = (m[1] === '高') ? 1 : 0;
+          if (packetMeta && packetMeta.acc === undefined) packetMeta.acc = cur.acc;
+        }
+      }
+
+      m = line.match(/消息流水号\s*[：:]\s*\d+\s*\(([0-9A-Fa-f]+)\)/);
+      if (m && packetMeta) packetMeta.serial = m[1].toUpperCase();
+
+      m = line.match(/信息序列号:\s*([0-9A-F]{2,4})/);
+      if (m) {
+        cur.serial = m[1];
+        if (packetMeta) packetMeta.serial = m[1].toUpperCase();
+      }
+
+      // Concox 告警包：提取括号前的告警名称，“无告警”保持普通点样式。
+      m = line.match(/告警类型\s*[：:]\s*([^,(，]+)\s*(?:\(([0-9A-Fa-f]+)\))?/);
+      if (m) {
+        var alarm = m[1].trim();
+        if (alarm && alarm.indexOf('无告警') < 0) {
+          cur.alarm = alarm;
+          cur.alarm_code = m[2] || '';
+        }
+      }
+
+      // 补传标志：仅 Concox
+      if (!isJt) {
+        m = line.match(/数据补传\(([0-9A-Fa-f]+)\)/);
+        if (m) cur.reupload = (parseInt(m[1], 16) !== 0) ? 1 : 0;
+        m = line.match(/实时上传\(([0-9A-Fa-f]+)\)/);
+        if (m) cur.reupload = (parseInt(m[1], 16) === 0) ? 0 : 1;
+      }
+
+      // JT808 事件提示：报警标志 / 视频报警 / 告警事件
+      if (isJt) {
+        m = line.match(/报警标志:\s*(.+?)(?:[,(]|$)/);
+        if (m) {
+          var ev = m[1].trim().replace(/,$/, '');
+          if (ev && ev.indexOf('无报警') < 0 && events.indexOf('报警:' + ev) < 0) events.push('报警:' + ev);
+        }
+        m = line.match(/视频相关报警:\s*(.+?)(?:,|$)/);
+        if (m) {
+          var ev2 = m[1].trim();
+          if (ev2 && events.indexOf('视频:' + ev2) < 0) {
+            events.push('视频:' + ev2);
+            // 部标样本中该报警通常表示 TF 卡缺失、不可用或存储器异常。
+            // 使用协议实际输出的名称，不把“未插卡”当成唯一确定原因。
+            if (ev2.indexOf('存储单元故障报警') >= 0) {
+              cur.alarm = '存储单元故障报警';
+              cur.alarm_code = 'JT808-STORAGE';
+            }
+          }
+        }
+        m = line.match(/扩展告警ID\/事件ID:([^(\s]+)/);
+        if (m) {
+          var ev3 = m[1].trim();
+          if (ev3 && (ev3.indexOf('告警') >= 0 || ev3.indexOf('报警') >= 0) && events.indexOf(ev3) < 0) events.push(ev3);
+        }
+      }
+
+      // '校验信息'(Concox) / '校验位'(JT808) 是包的最后字段行 -> 收尾当前点
+      if (line.indexOf('校验信息') === 0 || line.indexOf('校验位') === 0) {
+        commitPoint();
+        commitPacket();
+      }
+    }
+    commitPoint();
+    commitPacket();
+    assignPacketTimelineTimes(packetRecords);
+    return {
+      points: points,
+      packets: packetRecords,
+      totalPackets: totalPacketCount,
+      imei: imei,
+      model: model,
+      filtered: filteredCount
+    };
+  }
+
+  // ---------- 生成 KML（与 gps_parser.generate_kml 对齐） ----------
+  function generateKML(points, imei, detailed, language, driftDistM, driftGapSec) {
+    return finishSteps(generateKMLSteps(points, imei, detailed, language, driftDistM, driftGapSec));
+  }
+
+  function* generateKMLSteps(points, imei, detailed, language, driftDistM, driftGapSec) {
+    language = language === 'zh' ? 'zh' : 'en';
+    var text = KML_TEXT[language];
+    // 调用者通常传入用户界面的值；保留默认值可避免其他调用方式漏传参数。
+    driftDistM = driftDistM > 0 ? driftDistM : DEFAULT_DRIFT_DIST_M;
+    driftGapSec = driftGapSec > 0 ? driftGapSec : DEFAULT_DRIFT_GAP_SEC;
+    points.sort(function (a, b) { return a.time_utc - b.time_utc; });
+
+    var styles =
+      '<Style id="style_acc_off">' +
+      '<IconStyle><color>ff0000ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.5</scale></LabelStyle></Style>' +
+      '<Style id="style_acc_on_stop">' +
+      '<IconStyle><color>ff00ffff</color><scale>0.55</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.5</scale></LabelStyle></Style>' +
+      '<Style id="style_alarm">' +
+      '<IconStyle><color>ff8b0000</color><scale>1.3</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.9</scale></LabelStyle></Style>' +
+      '<Style id="style_speed_low">' +
+      '<IconStyle><color>ff00ff00</color><scale>0.7</scale><heading>0</heading><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.5</scale></LabelStyle></Style>' +
+      '<Style id="style_speed_high">' +
+      '<IconStyle><color>ff0080ff</color><scale>0.7</scale><heading>0</heading><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.5</scale></LabelStyle></Style>' +
+      '<Style id="style_track_green">' +
+      '<LineStyle><color>ff00ff00</color><width>3.5</width></LineStyle></Style>' +
+      '<Style id="style_track_red">' +
+      '<LineStyle><color>ff0000ff</color><width>3.5</width></LineStyle></Style>' +
+      '<Style id="style_track_orange">' +
+      '<LineStyle><color>ff0080ff</color><width>3.5</width></LineStyle></Style>' +
+      '<Style id="style_track_drift">' +
+      '<LineStyle><color>ff0000ff</color><width>6</width></LineStyle></Style>' +
+      '<Style id="style_upload_off">' +
+      '<IconStyle><color>ffff00ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.5</scale></LabelStyle></Style>' +
+      '<Style id="style_upload_on">' +
+      '<IconStyle><color>ffff00ff</color><scale>0.7</scale><heading>0</heading><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle>' +
+      '<LabelStyle><scale>0.5</scale></LabelStyle></Style>';
+
+    var title = 'Concox GPS Track' + (imei ? ' - IMEI ' + imei : '');
+
+    var t0 = fmtGMT8(points[0].time_utc);
+    var t1 = fmtGMT8(points[points.length - 1].time_utc);
+    var maxSpeed = 0;
+    for (var i = 0; i < points.length; i++) if (points[i].speed > maxSpeed) maxSpeed = points[i].speed;
+
+    var driftDistKm = driftDistM / 1000;
+    var driftGapMin = driftGapSec / 60;
+    var driftLegend = language === 'zh'
+      ? '漂移轨迹段（距离 >' + driftDistKm + ' km 且间隔 >' + driftGapMin + ' 分钟）'
+      : 'Drift segment (distance >' + driftDistKm + ' km and gap >' + driftGapMin + ' min)';
+
+    var desc =
+      '<![CDATA[<h2>' + text.reportTitle + '</h2>' +
+      (imei ? '<p>IMEI: <b>' + imei + '</b></p>' : '') +
+      '<p>' + text.points + ': <b>' + points.length + '</b></p>' +
+      '<p>' + text.timeRange + ': ' + t0 + ' ~ ' + t1 + ' (GMT+8)</p>' +
+      '<p>' + text.maximumSpeed + ': <b>' + maxSpeed + ' km/h</b></p>' +
+      '<hr><h3>' + text.legend + '</h3>' +
+      '<p><span style="color:red">●</span> ' + text.accOffLegend + '</p>' +
+      '<p><span style="color:yellow">●</span> ' + text.accStopLegend + '</p>' +
+      '<p><span style="color:darkblue">●</span> ' + text.alarmLegend + '</p>' +
+      '<p><span style="color:green">▲</span> ' + text.lowSpeedLegend + '</p>' +
+      '<p><span style="color:orange">▲</span> ' + text.highSpeedLegend + '</p>' +
+      '<p><span style="color:purple">●</span> ' + text.uploadOffLegend + '</p>' +
+      '<p><span style="color:purple">▲</span> ' + text.uploadOnLegend + '</p>' +
+      '<p><span style="color:red">━</span> ' + text.trackOffLegend + '</p>' +
+      '<p><span style="color:green">━</span> ' + text.trackLowLegend + '</p>' +
+      '<p><span style="color:orange">━</span> ' + text.trackHighLegend + '</p>' +
+      '<p><span style="color:red;font-weight:bold">━</span> ' + driftLegend + '</p>' +
+      ']]>';
+
+    var out = [];
+    out.push('<?xml version="1.0" encoding="UTF-8"?>');
+    out.push('<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">');
+    out.push('<Document>');
+    out.push('<name>' + escapeXml(title) + '</name>');
+    out.push('<description>' + desc + '</description>');
+    out.push(styles);
+
+    var driftCount = 0;
+
+    // 轨迹段
+    out.push('<Folder><name>' + text.trackFolder + '</name>');
+    for (var k = 0; k < points.length - 1; k++) {
+      if (k % 64 === 0) yield .45 * k / points.length;
+      var pt1 = points[k], pt2 = points[k + 1];
+      var speed = Math.max(pt1.speed, pt2.speed);
+      var acc = pt1.acc || 0;
+      var dist = haversine(pt1.latitude, pt1.longitude, pt2.latitude, pt2.longitude);
+      var gap = (pt2.time_utc - pt1.time_utc) / 1000;
+      var drift = (dist > driftDistM && gap > driftGapSec);
+      var styleId;
+      if (drift) { styleId = 'style_track_drift'; driftCount++; }
+      else if (acc === 0) styleId = 'style_track_red';
+      else if (speed > SPEED_THRESHOLD) styleId = 'style_track_orange';
+      else styleId = 'style_track_green';
+
+      var segName = text.segment + ' ' + (k + 1);
+      if (drift) segName += ' [' + text.drift + ' ' + (dist / 1000).toFixed(2) + 'km/' + Math.round(gap / 60) + 'min]';
+
+      out.push('<Placemark>');
+      out.push('<name>' + escapeXml(segName) + '</name>');
+      out.push('<styleUrl>#' + styleId + '</styleUrl>');
+
+      // 给每个轨迹段设置起止时间。Google Earth 只有在当前回放时间
+      // 与该区间重叠时才显示这一段，避免整条轨迹一直全部可见。
+      // 两个点时间相同时给它至少 1 秒，否则零时长线段可能无法显示。
+      var segmentEnd = pt2.time_utc;
+      if (segmentEnd <= pt1.time_utc) segmentEnd = new Date(pt1.time_utc.getTime() + 1000);
+      out.push('<TimeSpan><begin>' + fmtISO(pt1.time_utc) + '</begin><end>' +
+               fmtISO(segmentEnd) + '</end></TimeSpan>');
+
+      out.push('<LineString><tessellate>1</tessellate>');
+      out.push('<coordinates>' + pt1.longitude.toFixed(6) + ',' + pt1.latitude.toFixed(6) + ',' + pt1.altitude +
+               ' ' + pt2.longitude.toFixed(6) + ',' + pt2.latitude.toFixed(6) + ',' + pt2.altitude + '</coordinates>');
+      out.push('</LineString></Placemark>');
+    }
+    out.push('</Folder>');
+
+    // 普通点和告警点分别缓存，最后写入不同文件夹。
+    var gpsPointLines = [];
+    var alarmPointLines = [];
+    for (var j = 0; j < points.length; j++) {
+      if (j % 64 === 0) yield .45 + .55 * j / points.length;
+      var p = points[j];
+      var sp = p.speed || 0;
+      var acc2 = p.acc || 0;
+      var dir = p.direction || 0;
+      var driftHtml = '', driftTag = '';
+      if (j > 0) {
+        var prev = points[j - 1];
+        var dPrev = haversine(prev.latitude, prev.longitude, p.latitude, p.longitude);
+        var gPrev = (p.time_utc - prev.time_utc) / 1000;
+        if (dPrev > driftDistM && gPrev > driftGapSec) {
+          driftTag = ' [' + text.drift + ']';
+          driftHtml = '<p style="color:red;font-weight:bold">' + text.driftWarning + ': ' +
+                      (dPrev / 1000).toFixed(2) + ' km / ' + Math.round(gPrev / 60) + ' min</p>';
+        }
+      }
+      var reup = p.reupload || 0;
+      var alarmRaw = p.alarm || '';
+      var alarmText = alarmForLanguage(alarmRaw, p.alarm_code || '', language);
+      var ptStyle;
+      if (alarmText) {
+        // 告警优先级高于补传、ACC 和速度，强制显示深蓝色大点。
+        ptStyle = 'style_alarm';
+      } else if (reup) {
+        ptStyle = acc2 === 0 ? 'style_upload_off' : 'style_upload_on';
+      } else if (acc2 === 0) {
+        ptStyle = 'style_acc_off';
+      } else if (sp === 0) {
+        ptStyle = 'style_acc_on_stop';
+      } else if (sp > SPEED_THRESHOLD) {
+        ptStyle = 'style_speed_high';
+      } else {
+        ptStyle = 'style_speed_low';
+      }
+
+      var accStr = acc2 ? 'ON' : 'OFF';
+      var timeStr = fmtGMT8(p.time_utc);
+      var timeUtc = p.time_utc.getUTCFullYear() + '-' + pad(p.time_utc.getUTCMonth() + 1) + '-' + pad(p.time_utc.getUTCDate()) +
+                    ' ' + pad(p.time_utc.getUTCHours()) + ':' + pad(p.time_utc.getUTCMinutes()) + ':' + pad(p.time_utc.getUTCSeconds());
+      var speedColor = sp > SPEED_THRESHOLD ? 'orange' : (sp > 0 ? 'green' : 'gray');
+      var evTxt = eventsForLanguage(p.events, language);
+
+      var ptDesc;
+      if (detailed) {
+        ptDesc =
+          '<![CDATA[<div style="font-family:monospace">' +
+          '<h3>' + text.point + ' #' + (j + 1) + '</h3>' +
+          '<table border="1" cellpadding="4" style="border-collapse:collapse;font-size:13px">' +
+          '<tr><td><b>' + text.localTime + '</b></td><td>' + timeStr + ' GMT+8</td></tr>' +
+          '<tr><td><b>' + text.utcTime + '</b></td><td>' + timeUtc + '</td></tr>' +
+          '<tr><td><b>' + text.latitude + '</b></td><td>' + p.latitude.toFixed(6) + '°N</td></tr>' +
+          '<tr><td><b>' + text.longitude + '</b></td><td>' + p.longitude.toFixed(6) + '°E</td></tr>' +
+          '<tr><td><b>' + text.altitude + '</b></td><td>' + (p.altitude || 0) + ' m</td></tr>' +
+          '<tr><td><b>' + text.speed + '</b></td><td><span style="color:' + speedColor + '"><b>' + sp + ' km/h</b></span></td></tr>' +
+          '<tr><td><b>' + text.heading + '</b></td><td>' + dir + '° (' + dirToText(dir, language) + ')</td></tr>' +
+          '<tr><td><b>ACC</b></td><td><span style="color:' + (acc2 ? 'green' : 'red') + '"><b>' + accStr + '</b></span></td></tr>' +
+          '<tr><td><b>' + text.satellites + '</b></td><td>' + (p.sat_count || 0) + '</td></tr>' +
+          '<tr><td><b>' + text.gpsFix + '</b></td><td>' + (p.gps_positioned ? text.yes : text.noCached) + '</td></tr>' +
+          '<tr><td><b>' + text.statusByte + '</b></td><td>0x' + ((p.gps_status || 0).toString(16).toUpperCase()) + '</td></tr>' +
+          '<tr><td><b>' + text.reupload + '</b></td><td>' + (reup ? text.yes : text.no) + '</td></tr>' +
+          (alarmText ? '<tr><td><b>' + text.alarmType + '</b></td><td style="color:#00008B"><b>' + escapeXml(alarmText) + '</b></td></tr>' : '') +
+          (evTxt ? '<tr><td><b>' + text.event + '</b></td><td style="color:#d97706"><b>' + evTxt + '</b></td></tr>' : '') +
+          '</table>' + driftHtml + '</div>]]>';
+      } else {
+        ptDesc = '<![CDATA[#' + (j + 1) + ' ' + timeStr + ' GMT+8 | ' + sp + 'km/h | ' +
+                 'Lat ' + p.latitude.toFixed(6) + '° | Lon ' + p.longitude.toFixed(6) + '° | ' +
+                 text.heading + ' ' + dir + '° ' + dirToText(dir, language) + ' | ACC ' + accStr +
+                   (reup ? ' | ' + text.reupload : '') +
+                   (alarmText ? ' | ' + text.alarmType + ':' + escapeXml(alarmText) : '') +
+                  (evTxt ? ' | ' + evTxt : '') + ']]>';
+      }
+
+      var pointOut = [];
+      var reupTag = reup ? ' [' + text.reupload + ']' : '';
+      var alarmTag = alarmText ? '[' + text.alarmTag + ':' + alarmText + '] ' : '';
+      pointOut.push('<Placemark>');
+      pointOut.push('<name>' + escapeXml(alarmTag + '#' + (j + 1) + ' ' + timeStr + ' | ' + sp + 'km/h | ACC:' + accStr + reupTag + driftTag) + '</name>');
+      pointOut.push('<styleUrl>#' + ptStyle + '</styleUrl>');
+      pointOut.push('<description>' + ptDesc + '</description>');
+      if (ptStyle === 'style_speed_low' || ptStyle === 'style_speed_high' || ptStyle === 'style_upload_on') {
+        // Google arrow.png 默认朝下(南)，heading 需 +180° 补偿，使箭头指向实际航向
+        var arrowHeading = (dir + 180) % 360;
+        pointOut.push('<Style><IconStyle><heading>' + arrowHeading + '</heading></IconStyle></Style>');
+      }
+      pointOut.push('<TimeStamp><when>' + fmtISO(p.time_utc) + '</when></TimeStamp>');
+      pointOut.push('<Point>');
+      pointOut.push('<coordinates>' + p.longitude.toFixed(6) + ',' + p.latitude.toFixed(6) + ',' + (p.altitude || 0) + '</coordinates>');
+      pointOut.push('</Point></Placemark>');
+
+      // 不要在循环中使用 concat：它每次都会复制此前积累的整个数组，
+      // 定位点越多，复制量越接近平方级。逐项 push 可保持线性增长。
+      var targetPointLines = alarmText ? alarmPointLines : gpsPointLines;
+      for (var pointLineIndex = 0; pointLineIndex < pointOut.length; pointLineIndex++) {
+        targetPointLines.push(pointOut[pointLineIndex]);
+      }
+    }
+
+    out.push('<Folder><name>' + text.pointFolder + '</name>');
+    out = out.concat(gpsPointLines);
+    out.push('</Folder>');
+    out.push('<Folder><name>' + text.alarmFolder + '</name>');
+    out = out.concat(alarmPointLines);
+    out.push('</Folder>');
+
+    out.push('</Document>');
+    out.push('</kml>');
+
+    return { kml: out.join('\n'), driftCount: driftCount };
+  }
+
+  // ---------- 数据包时间轴 ----------
+  // 使用原生 SVG，避免加载大型图表库。时间跨度越长，自动使用越大的
+  // 分桶间隔，使图形元素数量大致控制在 120 组以内。
+  function createSvgElement(name, attrs) {
+    var el = document.createElementNS('http://www.w3.org/2000/svg', name);
+    Object.keys(attrs || {}).forEach(function (key) { el.setAttribute(key, attrs[key]); });
+    return el;
+  }
+
+  function addSvgText(parent, x, y, value, anchor) {
+    var label = createSvgElement('text', {
+      x: x, y: y, 'text-anchor': anchor || 'middle', 'class': 'timeline-axis'
+    });
+    label.textContent = value;
+    parent.appendChild(label);
+    return label;
+  }
+
+  function chooseBucketSize(spanMs) {
+    var choices = [
+      60e3, 5 * 60e3, 15 * 60e3, 30 * 60e3,
+      60 * 60e3, 3 * 60 * 60e3, 6 * 60 * 60e3,
+      12 * 60 * 60e3, 24 * 60 * 60e3, 7 * 24 * 60 * 60e3
+    ];
+    var target = Math.max(spanMs / 100, 1);
+    for (var i = 0; i < choices.length; i++) {
+      if (choices[i] >= target) return choices[i];
+    }
+    return choices[choices.length - 1];
+  }
+
+  function formatBucketSize(ms) {
+    if (ms < 60 * 60e3) return (ms / 60e3) + ' min';
+    if (ms < 24 * 60 * 60e3) return (ms / (60 * 60e3)) + ' h';
+    return (ms / (24 * 60 * 60e3)) + ' d';
+  }
+
+  function formatTimelineTime(ms) {
+    var d = new Date(ms + TZ_OFFSET_HOURS * 3600e3);
+    return pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
+           pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+
+  function formatTimelineDateTime(ms) {
+    var d = new Date(ms + TZ_OFFSET_HOURS * 3600e3);
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
+           pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+
+  function toggleTimelineSeries(seriesId, visible, animate) {
+    var series = document.getElementById(seriesId);
+    if (!series) return;
+    series.classList.toggle('is-instant', animate === false);
+    series.classList.toggle('is-hidden', !visible);
+  }
+
+  // 时间轴只保留按桶统计后的轻量模型。滑动时不重新解析原文，也不重新
+  // 扫描全部定位点，因此即使原始数据很多，交互成本也只与可视桶数量有关。
+  var TIMELINE_WINDOW_BUCKETS = 24;
+  var timelineViewModel = null;
+  var timelineRenderFrame = null;
+  var pendingTimelineStart = 0;
+  var pendingTimelineEnd = 1;
+
+  function resetTimelineNavigation() {
+    if (timelineRenderFrame !== null) cancelAnimationFrame(timelineRenderFrame);
+    timelineRenderFrame = null;
+    pendingTimelineStart = 0;
+    pendingTimelineEnd = 1;
+    var endRange = document.getElementById('timelineEndRange');
+    endRange.min = 1;
+    endRange.max = 1;
+    endRange.value = 1;
+    endRange.disabled = true;
+  }
+
+  // 保留屏幕上的 SVG 元素，只更新发生变化的属性和文本。
+  // 缩放改变柱子数量时，只补齐或移除差额，避免清空整块图表。
+  function updateTimelineSvg(target, source) {
+    Array.from(source.attributes).forEach(function (attr) {
+      if (target.getAttribute(attr.name) !== attr.value) target.setAttribute(attr.name, attr.value);
+    });
+    if (!source.children.length) {
+      if (target.textContent !== source.textContent) target.textContent = source.textContent;
+      return;
+    }
+    var children = Array.from(source.children);
+    children.forEach(function (child, index) {
+      var existing = target.children[index];
+      if (!existing) target.appendChild(child);
+      else if (existing.tagName !== child.tagName) target.replaceChild(child, existing);
+      else updateTimelineSvg(existing, child);
+    });
+    while (target.children.length > children.length) target.removeChild(target.lastElementChild);
+  }
+
+  function renderTimeline(points, packets, totalPackets) {
+    resetTimelineNavigation();
+    var svg = document.getElementById('timelineChart');
+    var summary = document.getElementById('timelineSummary');
+    var range = document.getElementById('timelineRange');
+    var rangeLabel = document.getElementById('timelineRangeLabel');
+
+    // 直接扫描最早/最晚时间，避免额外创建一个与数据量同样大的数组，
+    // 也避免 Math.min.apply 在超大数组上出现参数数量限制。
+    var minTime = Infinity;
+    var maxTime = -Infinity;
+    function includeTimelineTime(item) {
+      var timelineDate = item.timeline_time || item.time_utc;
+      if (!timelineDate) return;
+      var time = timelineDate.getTime();
+      if (time < minTime) minTime = time;
+      if (time > maxTime) maxTime = time;
+    }
+    packets.forEach(includeTimelineTime);
+    points.forEach(includeTimelineTime);
+    if (!isFinite(minTime)) {
+      timelineViewModel = null;
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      summary.textContent = 'No timestamped packets · 没有带时间的数据包';
+      range.disabled = true;
+      range.max = 0;
+      range.value = 0;
+      rangeLabel.textContent = 'Start · 起始时间: -';
+      return;
+    }
+
+    if (maxTime <= minTime) maxTime = minTime + 60e3;
+    var bucketMs = chooseBucketSize(maxTime - minTime);
+    var startTime = Math.floor(minTime / bucketMs) * bucketMs;
+    var bucketCount = Math.max(1, Math.ceil((maxTime - startTime + 1) / bucketMs));
+    var buckets = [];
+    for (var b = 0; b < bucketCount; b++) buckets.push({ packets: 0, points: 0, heartbeats: 0 });
+
+    var directPacketCount = 0;
+    var inferredPacketCount = 0;
+    var heartbeatCount = 0;
+    packets.forEach(function (packet) {
+      if (packet.time_utc) directPacketCount++;
+      if (packet.time_inferred) inferredPacketCount++;
+      if (packet.category === 'heartbeat') heartbeatCount++;
+      var packetTime = packet.timeline_time || packet.time_utc;
+      if (!packetTime) return;
+      var index = Math.min(bucketCount - 1, Math.floor((packetTime.getTime() - startTime) / bucketMs));
+      if (index >= 0) {
+        buckets[index].packets++;
+        if (packet.category === 'heartbeat') buckets[index].heartbeats++;
+      }
+    });
+    points.forEach(function (point) {
+      var index = Math.min(bucketCount - 1, Math.floor((point.time_utc.getTime() - startTime) / bucketMs));
+      if (index >= 0) buckets[index].points++;
+    });
+
+    // ACC 只保留状态变化点，供各个滑动窗口重复使用。
+    var accChanges = [];
+    var timelinePoints = points;
+    for (var orderIndex = 1; orderIndex < points.length; orderIndex++) {
+      if (points[orderIndex].time_utc < points[orderIndex - 1].time_utc) {
+        timelinePoints = points.slice().sort(function (a, b) { return a.time_utc - b.time_utc; });
+        break;
+      }
+    }
+    timelinePoints.forEach(function (point, index, sorted) {
+      var acc = point.acc ? 1 : 0;
+      if (!accChanges.length || accChanges[accChanges.length - 1].acc !== acc || index === sorted.length - 1) {
+        accChanges.push({ time:point.time_utc.getTime(), acc:acc });
+      }
+    });
+
+    var visibleBucketCount = Math.min(bucketCount, TIMELINE_WINDOW_BUCKETS);
+    timelineViewModel = {
+      buckets: buckets,
+      bucketMs: bucketMs,
+      startTime: startTime,
+      visibleBucketCount: visibleBucketCount,
+      accChanges: accChanges,
+      totalPackets: totalPackets,
+      directPacketCount: directPacketCount,
+      inferredPacketCount: inferredPacketCount,
+      heartbeatCount: heartbeatCount,
+      pointCount: points.length
+    };
+
+    range.min = 0;
+    range.max = Math.max(0, bucketCount - 1);
+    range.value = 0;
+    range.disabled = Number(range.max) === 0;
+    var endRange = document.getElementById('timelineEndRange');
+    endRange.max = bucketCount;
+    endRange.value = visibleBucketCount;
+    endRange.disabled = bucketCount <= 1;
+    pendingTimelineEnd = visibleBucketCount;
+    drawTimelineWindow(0, visibleBucketCount);
+  }
+
+  function drawTimelineWindow(startBucket, endBucket) {
+    if (!timelineViewModel) return;
+    var model = timelineViewModel;
+    var liveSvg = document.getElementById('timelineChart');
+    var svg = createSvgElement('svg', {});
+    var summary = document.getElementById('timelineSummary');
+    var rangeLabel = document.getElementById('timelineRangeLabel');
+    var maxStart = Math.max(0, model.buckets.length - 1);
+    startBucket = Math.max(0, Math.min(maxStart, Math.round(startBucket)));
+    endBucket = Math.max(startBucket + 1, Math.min(model.buckets.length, Math.round(endBucket)));
+    var visibleCount = endBucket - startBucket;
+    var viewStartTime = model.startTime + startBucket * model.bucketMs;
+    var viewEndTime = model.startTime + endBucket * model.bucketMs;
+
+    var width = 900, height = 300;
+    var left = 58, right = 54, top = 20, bottom = 52;
+    var plotWidth = width - left - right;
+    var plotHeight = height - top - bottom;
+    var maxCount = 1;
+    var viewPacketCount = 0, viewPointCount = 0, viewHeartbeatCount = 0;
+    for (var countIndex = startBucket; countIndex < endBucket; countIndex++) {
+      var countBucket = model.buckets[countIndex];
+      maxCount = Math.max(maxCount, countBucket.packets, countBucket.points, countBucket.heartbeats);
+      viewPacketCount += countBucket.packets;
+      viewPointCount += countBucket.points;
+      viewHeartbeatCount += countBucket.heartbeats;
+    }
+    var xForTime = function (time) {
+      return left + ((time - viewStartTime) / (visibleCount * model.bucketMs)) * plotWidth;
+    };
+    var yForCount = function (count) { return top + plotHeight - (count / maxCount) * plotHeight; };
+
+    var grid = createSvgElement('g', {});
+    for (var gy = 0; gy <= 4; gy++) {
+      var countValue = Math.round(maxCount * gy / 4);
+      var y = yForCount(countValue);
+      grid.appendChild(createSvgElement('line', { x1:left, y1:y, x2:width-right, y2:y, 'class':'timeline-grid' }));
+      addSvgText(grid, left - 8, y + 4, countValue, 'end');
+    }
+    addSvgText(grid, 15, top + plotHeight / 2, 'Count', 'middle').setAttribute('transform',
+      'rotate(-90 15 ' + (top + plotHeight / 2) + ')');
+    addSvgText(grid, width - 8, top + 4, 'ACC ON', 'end');
+    addSvgText(grid, width - 8, top + plotHeight, 'ACC OFF', 'end');
+    svg.appendChild(grid);
+
+    var packetGroup = createSvgElement('g', { id:'timelinePacketSeries', 'class':'timeline-series' });
+    var pointGroup = createSvgElement('g', { id:'timelinePointSeries', 'class':'timeline-series' });
+    var heartbeatGroup = createSvgElement('g', { id:'timelineHeartbeatSeries', 'class':'timeline-series' });
+    var bucketWidth = plotWidth / visibleCount;
+    for (var visibleIndex = 0; visibleIndex < visibleCount; visibleIndex++) {
+      var bucketIndex = startBucket + visibleIndex;
+      var bucket = model.buckets[bucketIndex];
+      var x = left + visibleIndex * bucketWidth;
+      var packetY = yForCount(bucket.packets);
+      var packetBar = createSvgElement('rect', {
+        x:x + bucketWidth * .12, y:packetY,
+        width:Math.max(1, bucketWidth * .76), height:top + plotHeight - packetY,
+        'class':'timeline-packets'
+      });
+      var packetTitle = createSvgElement('title', {});
+      packetTitle.textContent = formatTimelineTime(model.startTime + bucketIndex * model.bucketMs) +
+        ' · packets: ' + bucket.packets;
+      packetBar.appendChild(packetTitle);
+      packetGroup.appendChild(packetBar);
+
+      var pointY = yForCount(bucket.points);
+      var pointBar = createSvgElement('rect', {
+        x:x + bucketWidth * .31, y:pointY,
+        width:Math.max(1, bucketWidth * .38), height:top + plotHeight - pointY,
+        'class':'timeline-points'
+      });
+      var pointTitle = createSvgElement('title', {});
+      pointTitle.textContent = formatTimelineTime(model.startTime + bucketIndex * model.bucketMs) +
+        ' · GPS points: ' + bucket.points;
+      pointBar.appendChild(pointTitle);
+      pointGroup.appendChild(pointBar);
+
+      var heartbeatY = yForCount(bucket.heartbeats);
+      var heartbeatBar = createSvgElement('rect', {
+        x:x + bucketWidth * .43, y:heartbeatY,
+        width:Math.max(1, bucketWidth * .14), height:top + plotHeight - heartbeatY,
+        'class':'timeline-heartbeats'
+      });
+      var heartbeatTitle = createSvgElement('title', {});
+      heartbeatTitle.textContent = formatTimelineTime(model.startTime + bucketIndex * model.bucketMs) +
+        ' · heartbeats: ' + bucket.heartbeats;
+      heartbeatBar.appendChild(heartbeatTitle);
+      heartbeatGroup.appendChild(heartbeatBar);
+    }
+    svg.appendChild(packetGroup);
+    svg.appendChild(pointGroup);
+    svg.appendChild(heartbeatGroup);
+
+    // 只截取当前窗口附近的 ACC 变化，并延伸到窗口两端。
+    var visibleAccChanges = [];
+    var currentAcc = null;
+    model.accChanges.forEach(function (item) {
+      if (item.time <= viewStartTime) currentAcc = item.acc;
+      else if (item.time <= viewEndTime) {
+        if (!visibleAccChanges.length && currentAcc !== null) {
+          visibleAccChanges.push({ time:viewStartTime, acc:currentAcc });
+        }
+        visibleAccChanges.push(item);
+        currentAcc = item.acc;
+      }
+    });
+    if (!visibleAccChanges.length && currentAcc !== null) {
+      visibleAccChanges.push({ time:viewStartTime, acc:currentAcc });
+    }
+    if (visibleAccChanges.length) {
+      visibleAccChanges.push({ time:viewEndTime, acc:visibleAccChanges[visibleAccChanges.length - 1].acc });
+    }
+    var accGroup = createSvgElement('g', { id:'timelineAccSeries', 'class':'timeline-series' });
+    if (visibleAccChanges.length) {
+      var accPath = '';
+      visibleAccChanges.forEach(function (item, index) {
+        var x = xForTime(item.time);
+        var y = item.acc ? top + 8 : top + plotHeight - 8;
+        if (index === 0) accPath = 'M' + x + ',' + y;
+        else {
+          var previousY = visibleAccChanges[index - 1].acc ? top + 8 : top + plotHeight - 8;
+          accPath += ' L' + x + ',' + previousY + ' L' + x + ',' + y;
+        }
+      });
+      accGroup.appendChild(createSvgElement('path', { d:accPath, 'class':'timeline-acc' }));
+    }
+    svg.appendChild(accGroup);
+
+    for (var tx = 0; tx <= 4; tx++) {
+      var tickTime = viewStartTime + visibleCount * model.bucketMs * tx / 4;
+      addSvgText(svg, left + plotWidth * tx / 4, height - 25, formatTimelineTime(tickTime),
+        tx === 0 ? 'start' : (tx === 4 ? 'end' : 'middle'));
+    }
+    addSvgText(svg, left + plotWidth / 2, height - 5, 'Time (GMT+8)', 'middle');
+
+    rangeLabel.textContent = formatTimelineDateTime(viewStartTime) + ' → ' +
+      formatTimelineDateTime(viewEndTime) + ' GMT+8 · Window: ' + formatBucketSize(visibleCount * model.bucketMs);
+    document.getElementById('timelineRange').setAttribute('aria-valuetext', formatTimelineDateTime(viewStartTime));
+    document.getElementById('timelineEndRange').setAttribute('aria-valuetext', formatTimelineDateTime(viewEndTime));
+    updateRangeProgress(document.getElementById('timelineRange'));
+    updateRangeProgress(document.getElementById('timelineEndRange'));
+    summary.textContent = 'Total: ' + model.totalPackets +
+      ' · Direct: ' + model.directPacketCount +
+      ' · Inferred: ' + model.inferredPacketCount +
+      ' · View packets: ' + viewPacketCount +
+      ' · GPS: ' + viewPointCount +
+      ' · Heartbeats: ' + viewHeartbeatCount +
+      ' · Bucket: ' + formatBucketSize(model.bucketMs);
+
+    // 隐藏状态在更新前写入，拖动期间不会重复触发淡入淡出。
+    [[packetGroup, 'showPacketSeries'], [pointGroup, 'showPointSeries'],
+      [heartbeatGroup, 'showHeartbeatSeries'], [accGroup, 'showAccSeries']].forEach(function (entry) {
+      entry[0].setAttribute('class', 'timeline-series' +
+        (document.getElementById(entry[1]).checked ? '' : ' is-hidden'));
+    });
+    updateTimelineSvg(liveSvg, svg);
+    // 拖动时数据直接更新；手动勾选只淡入淡出，不缩放数据图形。
+    toggleTimelineSeries('timelinePacketSeries', document.getElementById('showPacketSeries').checked, false);
+    toggleTimelineSeries('timelinePointSeries', document.getElementById('showPointSeries').checked, false);
+    toggleTimelineSeries('timelineHeartbeatSeries', document.getElementById('showHeartbeatSeries').checked, false);
+    toggleTimelineSeries('timelineAccSeries', document.getElementById('showAccSeries').checked, false);
+
+  }
+
+  // ---------- UI ----------
+  var inputEl = document.getElementById('input');
+  var msgEl = document.getElementById('msg');
+  var resultEl = document.getElementById('result');
+  var btnGenerate = document.getElementById('btnGenerate');
+  var btnDownload = document.getElementById('btnDownload');
+  var btnCopy = document.getElementById('btnCopy');
+  var btnFile = document.getElementById('btnFile');
+  var btnClear = document.getElementById('btnClear');
+  var fileInput = document.getElementById('fileInput');
+  var inputCard = document.getElementById('inputCard');
+  var workspace = inputCard.parentElement;
+  var timelineCard = document.getElementById('timelineCard');
+  var timelineRange = document.getElementById('timelineRange');
+  var timelineEndRange = document.getElementById('timelineEndRange');
+  var timelineRangeLabel = document.getElementById('timelineRangeLabel');
+
+  var lastKml = null;
+  var lastName = 'gps_track.kml';
+  var fileText = '';
+  var generationBusy = false;
+  document.addEventListener('pointerdown', function () { document.documentElement.dataset.input = 'pointer'; }, true);
+  document.addEventListener('keydown', function () { document.documentElement.dataset.input = 'keyboard'; }, true);
+
+  function hideOutputCards() {
+    [resultEl, timelineCard].forEach(function (card) {
+      card.classList.remove('show', 'is-entering', 'is-leaving', 'is-instant');
+    });
+  }
+
+  function setWorkspaceLayout(hasResults, animate) {
+    workspace.classList.toggle('is-instant-layout', !animate);
+    workspace.classList.toggle('has-results', hasResults);
+  }
+
+  async function retractOutputCards(animate) {
+    var cards = [resultEl, timelineCard];
+    var hasResults = cards.some(function (card) { return card.classList.contains('show'); });
+    if (hasResults && animate) {
+      cards.forEach(function (card) {
+        card.classList.remove('is-instant');
+        card.classList.add('is-leaving');
+      });
+      await new Promise(function (resolve) { setTimeout(resolve, 160); });
+    }
+    hideOutputCards();
+  }
+
+  async function restartLoadingOverlay(loader) {
+    // 上一轮可能仍在淡出；清除旧状态并归零，再重新触发进场和扫光。
+    loader.classList.add('is-resetting');
+    loader.classList.remove('is-visible');
+    loadingProgress(0, 'Preparing · 准备中');
+    loader.getBoundingClientRect();
+    loader.classList.remove('is-resetting');
+    loader.getBoundingClientRect();
+    loader.setAttribute('aria-hidden', 'false');
+    loader.classList.add('is-visible');
+    // 小文件也要先把 0% 的初始画面提交，不能与完成状态挤在同一帧。
+    if (document.hidden) await yieldToPage();
+    else await new Promise(function (resolve) {
+      // 切到后台时 rAF 可能暂停；兜底保证任务仍能继续。
+      var frame = null;
+      var timer = setTimeout(finish, 100);
+      function finish() {
+        clearTimeout(timer);
+        if (frame !== null) cancelAnimationFrame(frame);
+        resolve();
+      }
+      frame = requestAnimationFrame(function () { frame = requestAnimationFrame(finish); });
+    });
+  }
+
+  function revealOutputCards(animate) {
+    setWorkspaceLayout(true, animate);
+    var cards = [resultEl, timelineCard];
+    cards.forEach(function (card) {
+      card.classList.toggle('is-instant', !animate);
+      card.classList.toggle('is-entering', animate);
+      card.classList.add('show');
+    });
+    // 两张卡片先进入正常文档流，再从各自的上方滑入；不逐帧改变高度。
+    // 使用 transition，不保留延迟回调，清空或再次生成可以立即打断。
+    if (animate) resultEl.getBoundingClientRect();
+    cards.forEach(function (card) { card.classList.remove('is-entering'); });
+  }
+
+  function loadingProgress(percent, message) {
+    percent = Math.max(0, Math.min(100, Math.round(percent)));
+    document.getElementById('loadingFill').style.transform = 'scaleX(' + percent / 100 + ')';
+    document.getElementById('loadingPercent').textContent = percent + '%';
+    document.getElementById('loadingProgress').setAttribute('aria-valuenow', percent);
+    var status = document.getElementById('loadingStatus');
+    if (status.textContent !== message) status.textContent = message;
+  }
+
+  function yieldToPage() {
+    // 让出主线程，给浏览器处理输入、布局和动画的机会。
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
+  async function runLoadingSteps(iterator, from, to, message) {
+    var deadline = performance.now() + 8;
+    while (true) {
+      var step = iterator.next();
+      if (step.done) {
+        loadingProgress(to, message);
+        return step.value;
+      }
+      if (performance.now() >= deadline) {
+        loadingProgress(from + (to - from) * step.value, message);
+        await yieldToPage();
+        deadline = performance.now() + 8;
+      }
+    }
+  }
+
+  function showMsg(text, isErr) {
+    msgEl.textContent = text;
+    msgEl.className = 'msg ' + (isErr ? 'err' : 'ok');
+  }
+
+  function setStat(id, val) { document.getElementById(id).textContent = val; }
+
+  btnFile.addEventListener('click', function () { fileInput.click(); });
+  btnClear.addEventListener('click', function () {
+    inputEl.value = '';
+    fileText = '';
+    lastKml = null;
+    timelineViewModel = null;
+    resetTimelineNavigation();
+    timelineRange.value = 0;
+    timelineRange.max = 0;
+    timelineRange.disabled = true;
+    timelineRangeLabel.textContent = 'Start · 起始时间: -';
+    hideOutputCards();
+    setWorkspaceLayout(false, document.documentElement.dataset.input !== 'keyboard');
+    btnDownload.disabled = true;
+    btnCopy.disabled = true;
+    showMsg('', false);
+  });
+
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      fileText = reader.result;
+      showMsg('已读取文件 · Loaded: ' + f.name, false);
+      generateFromText(fileText);
+    };
+    reader.onerror = function () { showMsg('读取文件失败 · Read failed', true); };
+    reader.readAsText(f);
+    fileInput.value = '';
+  });
+
+  async function generateFromText(text) {
+    if (generationBusy) return;
+    if (!text || !text.trim()) { showMsg('请先粘贴或上传数据 · Paste data first', true); return; }
+
+    // 开始前冻结控件状态，避免分段执行期间切换协议、重复提交或下载旧结果。
+    generationBusy = true;
+    var animateResults = document.documentElement.dataset.input !== 'keyboard';
+    var lockedControls = Array.from(document.querySelectorAll('button,input,select,textarea'));
+    var oldDisabled = lockedControls.map(function (control) { return control.disabled; });
+    lockedControls.forEach(function (control) { control.disabled = true; });
+    var loader = document.getElementById('timelineLoader');
+    var success = false;
+    inputCard.setAttribute('aria-busy', 'true');
+    resetTimelineNavigation();
+    var loadingStarted;
+    try {
+    await retractOutputCards(animateResults);
+    setWorkspaceLayout(false, animateResults);
+    await restartLoadingOverlay(loader);
+    loadingStarted = performance.now();
+    var filterZero = document.getElementById('filterZero').checked;
+    var parsed = await runLoadingSteps(
+      parseParsedTxtSteps(text, document.getElementById('protocol').value, filterZero),
+      0, 40, 'Parsing packets · 正在解析数据包');
+    var points = parsed.points;
+    if (!points.length) {
+      showMsg('未解析到任何定位点，请检查输入是否为「解析后的数据」· No points parsed', true);
+      resultEl.classList.remove('show');
+      timelineCard.classList.remove('show');
+      return;
+    }
+
+    var imei = parsed.imei || null;
+    var detailed = document.getElementById('detailed').checked;
+    var outputLanguage = document.getElementById('outputLanguage').value;
+    var driftDistanceKm = parseFloat(document.getElementById('driftDistanceKm').value);
+    var driftDurationMin = parseFloat(document.getElementById('driftDurationMin').value);
+    if (!isFinite(driftDistanceKm) || driftDistanceKm <= 0 ||
+        !isFinite(driftDurationMin) || driftDurationMin <= 0) {
+      showMsg('漂移距离和时长必须是大于 0 的数字 · Drift thresholds must be positive numbers', true);
+      return;
+    }
+    await yieldToPage();
+    var res = await runLoadingSteps(generateKMLSteps(
+      points,
+      imei,
+      detailed,
+      outputLanguage,
+      driftDistanceKm * 1000,
+      driftDurationMin * 60
+    ), 40, 85, 'Generating KML · 正在生成轨迹');
+    loadingProgress(90, 'Drawing timeline · 正在绘制时间轴');
+    await yieldToPage();
+
+    // 统计
+    var accOn = 0, maxSpeed = 0;
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].acc) accOn++;
+      if (points[i].speed > maxSpeed) maxSpeed = points[i].speed;
+    }
+    setStat('stPoints', points.length);
+    setStat('stTime', fmtGMT8(points[0].time_utc).slice(5) + ' ~ ' + fmtGMT8(points[points.length - 1].time_utc).slice(5));
+    setStat('stAcc', accOn + ' / ' + (points.length - accOn));
+    setStat('stSpeed', maxSpeed + ' km/h');
+    setStat('stDrift', res.driftCount);
+
+    // 设备信息（IMEI + 机型）
+    var modelStr = parsed.model ? (' · 机型 ' + parsed.model) : '';
+    document.getElementById('stDevice').textContent = 'IMEI ' + (imei || '-') + modelStr;
+    document.getElementById('deviceBar').style.display = 'block';
+
+    lastKml = res.kml;
+    lastName = imei ? 'gps_track_' + imei + '.kml' : 'gps_track.kml';
+    if (!/\.kml$/i.test(lastName)) lastName += '.kml';
+    document.getElementById('fileName').textContent = '将下载 · Will download: ' + lastName;
+
+    // SVG 已经包含显示所需的信息，无需把完整解析结果长期保存在全局变量中。
+    // 让临时 points / packets 在本次生成结束后可以被浏览器回收。
+    renderTimeline(points, parsed.packets || [], parsed.totalPackets || 0);
+    // renderTimeline 会配置滑块；遮罩消失之前仍禁用它们。
+    timelineRange.disabled = true;
+    timelineEndRange.disabled = true;
+    // 两张卡片保持隐藏，等进度完成后再统一入场。
+    var filteredNote = (parsed.filtered > 0) ? ('，过滤无效坐标 ' + parsed.filtered + ' 点') : '';
+    showMsg('生成成功 · Done: ' + points.length + ' 点, ' + res.driftCount + ' 处漂移' + filteredNote, false);
+    loadingProgress(100, 'Ready · 已完成');
+    // 小数据只作短暂展示，避免遮罩一闪而过；大数据不会额外固定等待。
+    await new Promise(function (resolve) { setTimeout(resolve, Math.max(120, 250 - (performance.now() - loadingStarted))); });
+    success = true;
+    } catch (error) {
+      showMsg('生成失败，请检查输入 · Generation failed: ' + error.message, true);
+      resultEl.classList.remove('show');
+    } finally {
+      if (!success) {
+        lastKml = null;
+        timelineViewModel = null;
+        resetTimelineNavigation();
+        hideOutputCards();
+        setWorkspaceLayout(false, animateResults);
+      }
+      lockedControls.forEach(function (control, index) { control.disabled = oldDisabled[index]; });
+      btnDownload.disabled = !success;
+      btnCopy.disabled = !success;
+      timelineRange.disabled = !success || Number(timelineRange.max) === 0;
+      timelineEndRange.disabled = !success || Number(timelineEndRange.max) <= 1;
+      inputCard.setAttribute('aria-busy', 'false');
+      loader.classList.remove('is-visible');
+      loader.setAttribute('aria-hidden', 'true');
+      if (success) revealOutputCards(animateResults);
+      generationBusy = false;
+    }
+  }
+
+  btnGenerate.addEventListener('click', function () {
+    generateFromText(inputEl.value);
+  });
+
+  [
+    ['showPacketSeries', 'timelinePacketSeries'],
+    ['showPointSeries', 'timelinePointSeries'],
+    ['showHeartbeatSeries', 'timelineHeartbeatSeries'],
+    ['showAccSeries', 'timelineAccSeries']
+  ].forEach(function (binding) {
+    var pointerToggle = false;
+    document.getElementById(binding[0]).addEventListener('click', function (event) {
+      pointerToggle = event.detail > 0;
+    });
+    document.getElementById(binding[0]).addEventListener('change', function () {
+      toggleTimelineSeries(binding[1], this.checked, pointerToggle);
+      pointerToggle = false;
+    });
+  });
+
+  function updateRangeProgress(control) {
+    var span = Number(control.max) - Number(control.min);
+    var progress = span > 0 ? (Number(control.value) - Number(control.min)) / span * 100 : 0;
+    control.style.setProperty('--range-progress', Math.max(0, Math.min(100, progress)) + '%');
+  }
+
+  function scheduleTimelineWindow(event) {
+    // range 的 input 事件在拖动时可能每秒触发数十次；每个绘制帧只处理
+    // 最后一个位置，使滑块跟手，同时避免堆积无用 SVG 重建任务。
+    if (!timelineViewModel) return;
+    var start = Number(timelineRange.value);
+    var end = Number(timelineEndRange.value);
+    // 两个端点至少相隔一个时间桶，避免零宽窗口或相互越过。
+    if (start >= end) {
+      if (event.target === timelineRange) start = end - 1;
+      else end = start + 1;
+    }
+    timelineRange.value = start;
+    timelineEndRange.value = end;
+    updateRangeProgress(timelineRange);
+    updateRangeProgress(timelineEndRange);
+    pendingTimelineStart = start;
+    pendingTimelineEnd = end;
+    if (timelineRenderFrame !== null) return;
+    timelineRenderFrame = requestAnimationFrame(function () {
+      timelineRenderFrame = null;
+      drawTimelineWindow(pendingTimelineStart, pendingTimelineEnd);
+    });
+  }
+  timelineRange.addEventListener('input', scheduleTimelineWindow);
+  timelineEndRange.addEventListener('input', scheduleTimelineWindow);
+
+  btnDownload.addEventListener('click', function () {
+    if (!lastKml) return;
+    var blob = new Blob([lastKml], { type: 'application/vnd.google-earth.kml+xml' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = lastName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  });
+
+  btnCopy.addEventListener('click', function () {
+    if (!lastKml) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lastKml).then(function () {
+        showMsg('已复制到剪贴板 · Copied', false);
+      }, function () {
+        showMsg('复制失败，请用下载方式获取 · Copy failed, use download', true);
+      });
+    } else {
+      showMsg('浏览器不支持一键复制，请用下载 · Copy not supported, use download', true);
+    }
+  });
+})();
+</script>
+</body>
+</html>

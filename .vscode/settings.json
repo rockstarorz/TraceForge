@@ -1,0 +1,10 @@
+{
+    // 使用这台电脑已经安装好的 Python 3.12（官方安装包版）。
+    // ${env:LOCALAPPDATA} 代表 C:\Users\当前用户名\AppData\Local，避免把用户名写死。
+    "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\Programs\\Python\\Python312\\python.exe",
+    "dart.flutterSdkPath": "D:\\flutter",
+    "dart.flutterSdkPaths": [
+        "D:\\flutter"
+    ],
+    "cmake.sourceDirectory": "${workspaceFolder}/flutter_app/windows"
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>箭头方向测试 - Arrow Heading Test</name>
+<description>4 个点，heading 分别是 0/90/180/270。在 Google Earth 里打开，看箭头实际指向哪。</description>
+<Placemark>
+  <name>① heading=0 (期望朝北)</name>
+  <Style><IconStyle><heading>0</heading><scale>2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle></Style>
+  <Point><coordinates>55.0000,25.0000,0</coordinates></Point>
+</Placemark>
+<Placemark>
+  <name>② heading=90 (期望朝东)</name>
+  <Style><IconStyle><heading>90</heading><scale>2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle></Style>
+  <Point><coordinates>55.0000,25.0100,0</coordinates></Point>
+</Placemark>
+<Placemark>
+  <name>③ heading=180 (期望朝南)</name>
+  <Style><IconStyle><heading>180</heading><scale>2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></Style></Style>
+  <Point><coordinates>55.0000,25.0200,0</coordinates></Point>
+</Placemark>
+<Placemark>
+  <name>④ heading=270 (期望朝西)</name>
+  <Style><IconStyle><heading>270</heading><scale>2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/arrow.png</href></Icon></IconStyle></Style>
+  <Point><coordinates>55.0000,25.0300,0</coordinates></Point>
+</Placemark>
+</Document>
+</kml>

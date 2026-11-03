@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // 按 F5 后，VS Code 会先询问 parsed.txt 的完整路径。
+            "name": "调试 KML 工具（输入 parsed.txt 路径）",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}\\kml_tool.py",
+            "console": "integratedTerminal",
+            "args": [
+                "${input:parsedFile}",
+                "--detailed"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "parsedFile",
+            "type": "promptString",
+            "description": "请输入 parsed.txt 的完整路径（可以从资源管理器复制）"
+        }
+    ]
+}
